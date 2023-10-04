@@ -42,5 +42,6 @@ DF_TEST_FILE_PATH = "data/test.csv"
 INDEX = "UniqueID"
 LABEL = "loan_default"
 TEST_SIZE = 0.10
+CV_SPLIT_SIZE = 5
 INDIA_HOLIDAYS = holidays.India(years=[2018])
 PLAIN_ADABOOST_PARAMS = {'estimator': DecisionTreeClassifier(max_depth=1), 'random_state': RANDOM_SEED}

@@ -8,7 +8,6 @@ from importlib import reload
 from config import *
 import config
 # reload(config)
-# reload(hp)
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, ConfusionMatrixDisplay, roc_auc_score
 from sklearn.compose import ColumnTransformer
@@ -74,15 +73,12 @@ class NumericColumnsTransformer(BaseEstimator, TransformerMixin):
         
         if self.method == "outlier_replacement":
             X[self.columns] = X[self.columns].apply(self._apply_boxplot_outlier_removal)
-            
         elif self.method == "log":
             X[self.columns] = X[self.columns].apply(self._apply_log)
         elif self.method == "yeo_johnson":
             X[self.columns] = power_transform(X=X[self.columns], method='yeo-johnson')
-        
         elif self.method == "square":
             X[self.columns] = X[self.columns].apply(self._apply_square)
-
         elif self.method == "original":
             pass
         
@@ -171,11 +167,6 @@ def clean_rows(df: pd.DataFrame):
     df_cleaned = df[df['PERFORM_CNS.SCORE.DESCRIPTION'] != 'Not Scored: More than 50 active Accounts found']
     # df['PERFORM_CNS_SCORE_DESCRIPTION'] = df['PERFORM_CNS_SCORE_DESCRIPTION'].cat.remove_categories('Not Scored: More than 50 active Accounts found')
 
-    with open("data/rows_to_remove_idx.pickle", "rb") as file:  
-        rows_to_remove_idx: List[int] = pickle.load(file)
-
-    df_cleaned.drop(rows_to_remove_idx, inplace=True)
-
     return df_cleaned
 
 
@@ -189,8 +180,9 @@ def clean_df(df: pd.DataFrame):
 
     Returns:
     --------
-    Tuple[pd.DataFrame, List[str], List[str], List[str]]
-        A tuple containing the cleaned DataFrame and lists of numerical, ordinal and nominal column names.
+    Tuple[pd.DataFrame, List[str], List[str], List[str], List[str], List[str], List[str]]
+        A tuple containing the cleaned DataFrame and lists of numerical, ordinal, nominal, 
+        derived numerical, derived ordinal and derived ordinal column names.
     """
     # To avoid modifying the input DataFrame
     df = df.copy()
@@ -251,6 +243,10 @@ def clean_df(df: pd.DataFrame):
        'Employment_Type', 'State_ID', 'Employee_code_ID', 'MobileNo_Avl_Flag', 'PERFORM_CNS_SCORE_DESCRIPTION', 
     ]
 
+    derived_numerical: List[str] = []
+    derived_ordinal: List[str] = []
+    derived_nominal: List[str] = []
+
     # Some lonees had negative current balance, so applying absolute
     # value will make irregular values positive and thus valid
     df['PRI_CURRENT_BALANCE'] = df['PRI_CURRENT_BALANCE'].abs()
@@ -283,7 +279,8 @@ def clean_df(df: pd.DataFrame):
     # Replacing values for 'PERFORM_CNS_SCORE' lower than 300 with 0
     df.loc[df['PERFORM_CNS_SCORE'] < 300, 'PERFORM_CNS_SCORE'] = 0
 
-    return df, numerical, ordinal, nominal
+    return (df, numerical, ordinal, nominal, 
+            derived_numerical, derived_ordinal, derived_nominal)
 
 def calculate_no_of_holidays(start_date: pd.Timestamp, country_holidays: Dict[datetime.date, str]):
     """Calculates the number of holidays within a 30-day date range starting from the given date
@@ -385,34 +382,8 @@ def add_derived_numerical_features(df: pd.DataFrame, numerical: List[str]):
 
     return df, numerical, derived_numerical
 
-def fix_age_first_loan_and_credit_history_length(df: pd.DataFrame):
-    """Fixes invalid values in the 'CREDIT_HISTORY_LENGTH' and 'Age_First_Loan' columns of the input DataFrame.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The input DataFrame with 'Age_First_Loan' and 'CREDIT_HISTORY_LENGTH' columns to be fixed.
-
-    Returns
-    -------
-    pd.DataFrame
-        A DataFrame with fixed 'Age_First_Loan' and 'CREDIT_HISTORY_LENGTH' columns.
-    """
-    # To avoid modifying the input DataFrame
-    df = df.copy()
-    
-    # Define mask for invalid 'Age_First_Loan' (age less than 18)
-    mask_invalid_Age_First_Loan = df['Age_First_Loan'] < 18
-
-    # Assign year 18 to invalid values of 'Age_First_Loan'
-    df.loc[mask_invalid_Age_First_Loan, 'Age_First_Loan'] = 18
-    
-    # Calculate their 'CREDIT_HISTORY_LENGTH' according to their new 'Age_First_Loan', 
-    df.loc[mask_invalid_Age_First_Loan, 'CREDIT_HISTORY_LENGTH'] = (pd.Timestamp(2019, 1, 1) - df.loc[mask_invalid_Age_First_Loan, 'Date_of_Birth'] - 18 * np.timedelta64(1, 'Y')) / np.timedelta64(1, 'M')
-
-    return df
-
-def clean_df_fe_numerical(df: pd.DataFrame, numerical: List[str], derived_numerical: List[str]):
+def clean_df_fe_numerical(df: pd.DataFrame, numerical: List[str], ordinal: List[str], nominal: List[str], 
+                          derived_numerical: List[str], derived_ordinal: List[str], derived_nominal: List[str]):
     """Cleans and performs additional numerical feature engineering on a DataFrame with new derived numerical features.
 
     Parameters
@@ -423,22 +394,38 @@ def clean_df_fe_numerical(df: pd.DataFrame, numerical: List[str], derived_numeri
     numerical : List[str]
         A list of column names representing the numerical features.
 
+    ordinal : List[str]
+        A list of column names representing the original ordinal categorical features.
+    
+    nominal : List[str]
+        A list of column names representing the original nominal categorical features.
+
     derived_numerical : List[str]
         A list of column names representing the newly derived numerical features.
 
+    derived_ordinal : List[str]
+        A list of column names representing the newly derived ordinal features.
+
+    derived_nominal : List[str]
+        A list of column names representing the newly derived nominal features.
+
     Returns
     -------
-    Tuple[pd.DataFrame, List[str], List[str]]
+    Tuple[pd.DataFrame, List[str], List[str], List[str], List[str], List[str], List[str]]
         A tuple containing the following:
         - The cleaned and updated DataFrame after derivation of new numerical features had been done.
         - The modified list of numerical column names.
+        - The modified list of ordinal column names.
+        - The modified list of nominal column names.
         - The modified list of derived numerical column names.
+        - The modified list of derived ordinal column names.
+        - The modified list of derived nominal column names.
     """
     # To avoid modifying the input DataFrame
     df = df.copy()
     
-    # Fix invalid values in 'Age_First_Loan' and 'CREDIT_HISTORY_LENGTH'
-    df = fix_age_first_loan_and_credit_history_length(df)
+    # Handling records who have 'Age_First_Loan' less than 16
+    df['Invalid_Age_First_Loan'] = (df['Age_First_Loan'] < 16).astype('uint8')
 
     # Define columns for dropping
     to_drop = ['PRI_ACTIVE_ACCTS', 'TOT_OVERDUE_ACCTS', 'PRI_NO_OF_ACCTS', 'TOT_ACTIVE_ACCTS_RATIO',
@@ -452,9 +439,15 @@ def clean_df_fe_numerical(df: pd.DataFrame, numerical: List[str], derived_numeri
     numerical = [a for a in numerical if a not in to_drop] 
     [derived_numerical.remove(a) for a in to_drop if "TOT_" in a];
 
-    return df, numerical, derived_numerical
+    # Update ordinal and derived_ordinal list of cols respectively
+    ordinal.append('Invalid_Age_First_Loan')
+    derived_ordinal.append('Invalid_Age_First_Loan')
+    
+    return (df, numerical, ordinal, nominal, 
+            derived_numerical, derived_ordinal, derived_nominal)
 
-def add_derived_categorical_features(df: pd.DataFrame, ordinal: List[str], nominal: List[str]):
+def add_derived_categorical_features(df: pd.DataFrame, ordinal: List[str], nominal: List[str], 
+                                     derived_ordinal: List[str], derived_nominal: List[str]):
     """Add derived categorical features (ordinal and nominal) to the input DataFrame 
     (categorical feature engineering).
 
@@ -468,6 +461,12 @@ def add_derived_categorical_features(df: pd.DataFrame, ordinal: List[str], nomin
 
     nominal : List[str]
         A list of column names representing the original nominal categorical features.
+    
+    derived_ordinal : List[str]
+        A list of column names representing the newly derived ordinal features.
+
+    derived_nominal : List[str]
+        A list of column names representing the newly derived nominal features.
 
     Returns:
     --------
@@ -476,12 +475,13 @@ def add_derived_categorical_features(df: pd.DataFrame, ordinal: List[str], nomin
         - The updated DataFrame with added derived ordinal and nominal features.
         - The modified list of ordinal column names, including the newly derived features.
         - The modified list of nominal column names, including the newly derived features.
-        - A list of names of the newly ordinal categorical features.
-        - A list of names of the newly nominal categorical features.
+        - The modified list of ordinal categorical features.
+        - The modified list of nominal categorical features.
     """
     df['No_Of_Holidays_In_First_Disbursal_Month'] = df['DisbursalDate'].apply(lambda x: calculate_no_of_holidays(x, INDIA_HOLIDAYS)).astype('int8')
-    df['Month_of_Birth'] = df['Date_of_Birth'].dt.month.astype('category')
     df['shared_documents'] = (df['Aadhar_flag'] + df['PAN_flag'] + df['VoterID_flag'] + df['Driving_flag']).astype('category')
+    
+    df['Month_of_Birth'] = df['Date_of_Birth'].dt.month.astype('category')
 
     ordinal.extend(['shared_documents',
                     'No_Of_Holidays_In_First_Disbursal_Month'
@@ -492,7 +492,8 @@ def add_derived_categorical_features(df: pd.DataFrame, ordinal: List[str], nomin
     ]
     derived_nominal = ['Month_of_Birth']
 
-    return df, ordinal, nominal, derived_ordinal, derived_nominal
+    return (df, ordinal, nominal, 
+            derived_ordinal, derived_nominal)
 
 def clean_df_fe_categorical(df: pd.DataFrame, ordinal: List[str], nominal: List[str], derived_ordinal: List[str], derived_nominal: List[str]):
     """Cleans and performs additional categorical feature engineering on a DataFrame with new derived categorical features.
@@ -565,19 +566,28 @@ class PreprocessDfTransformer(BaseEstimator, TransformerMixin):
     derived_nominal_: List[str]
         The list of derived nominal feature names.
     """
+    def __init__(self) -> None:
+        super().__init__()
+
     def fit(self, X: pd.DataFrame, y=None):
         return self
     
     def transform(self, X: pd.DataFrame, y=None) -> pd.DataFrame:
         X = X.copy()
 
-        X, self.numerical_, self.ordinal_, self.nominal_ = clean_df(X)
+        (X, self.numerical_, self.ordinal_, self.nominal_, 
+         self.derived_numerical_, self.derived_ordinal_, self.derived_nominal_) = clean_df(X)
 
         X, self.numerical_, self.derived_numerical_ = add_derived_numerical_features(X, self.numerical_)
-        X, self.numerical_, self.derived_numerical_ = clean_df_fe_numerical(X, self.numerical_, self.derived_numerical_)
+        (X, self.numerical_, self.ordinal_, self.nominal_,
+         self.derived_numerical_, self.derived_ordinal_, self.derived_nominal_) = clean_df_fe_numerical(X, self.numerical_, self.ordinal_, self.nominal_, 
+                                                                                                        self.derived_numerical_, self.derived_ordinal_, self.derived_nominal_)
 
-        X, self.ordinal_, self.nominal_, self.derived_ordinal_, self.derived_nominal_ = add_derived_categorical_features(X, self.ordinal_, self.nominal_)
-        X, self.ordinal_, self.nominal_, self.derived_ordinal_, self.derived_nominal_ = clean_df_fe_categorical(X, self.ordinal_, self.nominal_, self.derived_ordinal_, self.derived_nominal_)
+        (X, self.ordinal_, self.nominal_, 
+         self.derived_ordinal_, self.derived_nominal_) = add_derived_categorical_features(X, self.ordinal_, self.nominal_, 
+                                                                                          self.derived_ordinal_, self.derived_nominal_)
+        (X, self.ordinal_, self.nominal_, 
+         self.derived_ordinal_, self.derived_nominal_) = clean_df_fe_categorical(X, self.ordinal_, self.nominal_, self.derived_ordinal_, self.derived_nominal_)
 
         X.rename(columns={c: f"numerical__{c}" for c in self.numerical_}, inplace=True)
         X.rename(columns={c: f"ordinal__{c}" for c in self.ordinal_}, inplace=True)
@@ -763,7 +773,7 @@ def perform_learning_curve_train_sizes(estimator, preprocessing_pipe, X_train, X
     -----
     This function uses random sampling with a fixed random seed to ensure reproducibility of results.
     """
-    def inner_perform_learning_curve_train_sizes(estimator, preprocessing_pipe, X_train, X_test, y_train, y_test, train_size):
+    def inner_perform_learning_curve_train_sizes(estimator, preprocessing_pipe, X_train, X_test, y_train, y_test, train_size):       
         X_train_sample = X_train.sample(train_size, random_state=RANDOM_SEED)
         y_train_sample = y_train.sample(train_size, random_state=RANDOM_SEED)
 
@@ -775,7 +785,7 @@ def perform_learning_curve_train_sizes(estimator, preprocessing_pipe, X_train, X
         results = {train_size: train_test_results}
         return results
 
-    lc_train_size_data = Parallel(n_jobs=n_jobs)(delayed(inner_perform_learning_curve_train_sizes)(estimator, preprocessing_pipe, X_train, y_train, X_test, y_test, train_size) 
+    lc_train_size_data = Parallel(n_jobs=n_jobs)(delayed(inner_perform_learning_curve_train_sizes)(estimator, preprocessing_pipe, X_train, X_test, y_train, y_test, train_size) 
     for train_size in train_sizes)
 
     return lc_train_size_data
