@@ -1,0 +1,9 @@
+pandas
+numpy
+matplotlib
+scikit-learn
+scikit-optimize
+seaborn
+holidays
+ipykernel
+pip
