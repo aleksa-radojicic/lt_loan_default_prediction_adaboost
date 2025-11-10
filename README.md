@@ -2,7 +2,7 @@
 This project addresses the challenge of predicting vehicle loan default of Indian borrowers using data acquired in 2019 from the `LTFS Data Science FinHack (ML Hackathon)`. Check out the **[link](https://datahack.analyticsvidhya.com/contest/ltfs-datascience-finhack-an-online-hackathon/)** to the competition for a detailed dataset and problem description.
 
 # Project Overview
-The objective is to accurately predict the probability of loanee / borrower defaulting on a vehicle loan in the first EMI (Equated Monthly Instalments) on the due date. Python with Jupyter notebooks are used for the implementation, relying heavily on scikit-learn library. AUC is utilized as the evaluation metric due to class imbalance. In the project pipelines are extensively used to avoid data leakage and simplify transformations.
+The objective is to accurately predict the probability of loanee / borrower defaulting on a vehicle loan in the first EMI (Equated Monthly Installments) on the due date. Python with Jupyter notebooks are used for the implementation, relying heavily on scikit-learn library. AUC is utilized as the evaluation metric due to class imbalance. In the project pipelines are extensively used to avoid data leakage and simplify transformations.
 
 AdaBoost is chosen because it's a more sophisticated model capable of capturing non-linear patterns and uses less RAM compared to RandomForest.
 
@@ -31,12 +31,16 @@ The key steps performed in modelling are following:
 
 ## Results
 
-Below are the AUC results for the optimized AdaBoost model:
+Below are the AUC results for CV and the optimized AdaBoost model:
 
-|                   | AUC    |
+| Dataset                   | AUC    |
 |-------------------|----------------|
+| CV  | 65.888% |
 | Train Set  | 67.144% |
 | **Test Set**   | **66.302%** |
 | Entire Set | 67.069% |
 
 This approach would approximately yield a ranking of 113th place on the Private Leaderboard.
+
+## Presentation
+The presentation in English is available as PDF in this repository: [link](https://raw.githubusercontent.com/aleksa-radojicic/lt_loan_default_prediction_adaboost/refs/heads/main/Presentation.pdf).
